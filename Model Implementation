@@ -1,0 +1,823 @@
+# Import NumPy, Pandas, Scikit-learn libraries
+# NumPy, Pandas for data pre-processing 
+import numpy as np
+import pandas as pd 
+
+# Sklearn for data transformation
+from sklearn import preprocessing
+from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.preprocessing import MinMaxScaler
+
+# Seaborn and Matplotlib for data visualization
+import seaborn as sb
+import matplotlib.pyplot as plt
+
+# Scikit-learn for building models
+from sklearn.model_selection import train_test_split
+from sklearn.model_selection import KFold
+from sklearn.ensemble import RandomForestRegressor
+import lightgbm as lgb
+import xgboost as xgb
+from sklearn.ensemble import VotingRegressor
+from sklearn.ensemble import StackingRegressor
+from sklearn.ensemble import BaggingRegressor
+from sklearn.ensemble import ExtraTreesRegressor
+from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import LogisticRegression
+
+# Import metrics
+from sklearn.metrics import mean_squared_log_error
+
+pd.set_option('display.max_columns', None)
+pd.set_option('display.max_rows', None)
+pd.set_option('display.width', None)
+# ignore all future warnings
+from warnings import simplefilter
+simplefilter(action='ignore', category=FutureWarning) 
+simplefilter(action='ignore', category=UserWarning) 
+
+# Load data
+df = pd.read_csv("/content/drive/MyDrive/Dataset/HousingPrice.csv", encoding='gbk', low_memory=False)
+df.head(10)
+
+# Visualize missing values
+fig, ax = plt.subplots(figsize=(15,7))
+sb.heatmap(df.isnull(), yticklabels=False,cbar=False, cmap='viridis')
+
+# Count the ratio of missing values for each feature
+df.isnull().sum()/len(df)*100
+
+# Drop features that have more than 50% missing values
+df.drop(['DOM','url','kitchen','drawingRoom','bathRoom','Cid','id','totalPrice'],axis=1,inplace=True)
+
+# Drop data rows which have missing values
+df.dropna(inplace=True)
+df = df[df['constructionTime']!='未知']
+
+# Create "distance" feature based on "lng" and "lat" features
+# Import math functions 
+from math import radians, cos, sin, asin, sqrt
+# Beijing coordinate: Lng-116.383331, Lat-39.916668
+def distance(lat2, lng2,lat1=39.916668,lng1=116.383331):       
+    lng1 = radians(lng1) 
+    lng2 = radians(lng2) 
+    lat1 = radians(lat1) 
+    lat2 = radians(lat2) 
+    dlng = lng2 - lng1  
+    dlat = lat2 - lat1 
+    a = sin(dlat / 2)**2 + cos(lat1) * cos(lat2) * sin(dlng / 2)**2
+    c = 2 * asin(sqrt(a))  
+    r = 6371
+    return(c * r) 
+df['distance'] = df.apply(lambda x: distance (x['Lat'],x['Lng']),axis=1)
+df['distance'].head(10)
+
+# Creature "Age" feature
+df['constructionTime'] = df['constructionTime'].astype(int)
+df['Age'] = 2019 - df['constructionTime']
+df.drop(['constructionTime'],axis=1,inplace=True)
+df['Age'].head(10)
+
+# Extract year from "Date" feature
+df['tradeTime'] = pd.DatetimeIndex(df['tradeTime']).year
+df['tradeTime'].head(10)
+
+# Set the value of 'livingRoom' feature from 1 to 4
+df['livingRoom'].replace('0','1',inplace=True)
+df['livingRoom'].replace('5','4',inplace=True)
+df['livingRoom'].replace('6','4',inplace=True)
+df['livingRoom'].replace('7','4',inplace=True)
+df['livingRoom'].replace('8','4',inplace=True)
+df['livingRoom'].replace('9','4',inplace=True)
+df['livingRoom'].head(10)
+
+# Split "floor" into "floorType" and "floorHeight"
+lst_num = []
+lst_str = []
+for val in df['floor'].values:
+    val = val.split()
+    num = val[1]
+    string  = val[0]
+    lst_num.append(num)
+    lst_str.append(string)
+
+# Replace Chinese with English     
+lst_str_eng=[]
+for string in lst_str:
+    if string == '中':
+        lst_str_eng.append(string.replace('中','middle'))
+    elif string == '高':
+        lst_str_eng.append(string.replace('高','high'))
+    elif string == '底':
+        lst_str_eng.append(string.replace('底','bottom'))
+    elif string == '低':
+        lst_str_eng.append(string.replace('低','low'))
+    elif string == '未知':
+        lst_str_eng.append(string.replace('未知','unknown'))
+    elif string == '顶':
+        lst_str_eng.append(string.replace('顶','top'))
+
+df1 = pd.DataFrame(lst_str_eng,columns=['floorType'])
+df2 = pd.DataFrame(lst_num,columns=['floorHeight'])
+df = pd.concat([df,df1,df2],axis=1)
+
+# Drop instances with "unknown" values 
+df = df[df['floorType']!='unknown']
+
+# Drop missing values
+df.dropna(inplace=True)
+
+# Drop "floor" feature
+df.drop(['floor'],axis=1,inplace=True)
+
+df.head(10)
+
+# Replace 'buildingType' numerical values with categorical values
+df['buildingType'].replace(1,'Tower',inplace=True)
+df['buildingType'].replace(2,'Bungalow',inplace=True)
+df['buildingType'].replace(3,'Tower and Plate',inplace=True)
+df['buildingType'].replace(4,'Plate',inplace=True)
+df['buildingType'].head(10)
+
+# Convert float into int
+df['floorHeight'] = df['floorHeight'].astype(int)
+df['livingRoom'] = df['livingRoom'].astype(int)
+df['district'] = df['district'].astype(int)
+df['tradeTime'] = df['tradeTime'].astype(int)
+df['Age'] = df['Age'].astype(int)
+df['renovationCondition'] = df['renovationCondition'].astype(int)
+df['buildingStructure'] = df['buildingStructure'].astype(int)
+df['elevator'] = df['elevator'].astype(int)
+df['fiveYearsProperty'] = df['fiveYearsProperty'].astype(int)
+df['subway'] = df['subway'].astype(int)
+df['followers']  = df['followers'].astype(int)
+
+# Reset index của Dataframe
+df.reset_index(inplace=True)
+df.drop(['index'],axis=1,inplace=True)
+# Data
+print ("DATA", df.shape)
+df.head()
+
+# Identify Q1 và Q3
+df['Lng'].describe()
+# Drop outliers of "Lng"
+outliers_Lng = []
+Q1 = 116.344557
+Q3 = 116.481385
+IQR = Q3 - Q1
+for x in df['Lng'].values:
+    if (x < (Q1 - 1.5 * IQR)) or ((Q3 + 1.5 * IQR) < x):
+        if x not in outliers_Lng:
+            outliers_Lng.append(x)
+for outlier in outliers_Lng:
+    df = df[df['Lng']!=outlier]
+
+print ('DATA', df.shape)
+
+# Identify Q1 và Q3
+df['Lat'].describe()
+# Drop outliers of "Lat"
+outliers_Lat = []
+Q1 = 39.894045
+Q3 = 40.012518
+IQR = Q3 - Q1
+for x in df['Lat'].values:
+    if (x < (Q1 - 1.5 * IQR)) or ((Q3 + 1.5 * IQR) < x):
+        if x not in outliers_Lat:
+            outliers_Lat.append(x)
+for outlier in outliers_Lat:
+    df = df[df['Lat']!=outlier]
+
+print ('DATA', df.shape)
+
+# Identify Q1 và Q3
+df['distance'].describe()
+# Drop outliers of "distance"
+outliers_dist = []
+Q1 =  7.821041
+Q3 = 17.444622
+IQR = Q3 - Q1
+for x in df['distance'].values:
+    if (x < (Q1 - 1.5 * IQR)) or ((Q3 + 1.5 * IQR) < x):
+        if x not in outliers_dist:
+            outliers_dist.append(x)
+for outlier in outliers_dist:
+    df = df[df['distance']!=outlier]
+
+print ('DATA' ,df.shape)
+
+# Identify Q1 và Q3
+df['Age'].describe()
+# Drop outliers of "age"
+outliers_age = []
+Q1 = 13
+Q3 = 25
+IQR = Q3 - Q1
+for x in df['Age'].values:
+    if (x < (Q1 - 1.5 * IQR)) or ((Q3 + 1.5 * IQR) < x):
+        if x not in outliers_age:
+            outliers_age.append(x)
+for outlier in outliers_age:
+    df = df[df['Age']!=outlier]
+
+print ("DATA" ,df.shape)
+
+# Identify Q1 và Q3
+df['square'].describe()
+# Drop outliers of "square"
+outliers_square = []
+Q1 = 58.280000
+Q3 = 99.330000
+IQR = Q3 - Q1
+for x in df['square'].values:
+    if (x < (Q1 - 1.5 * IQR)) or ((Q3 + 1.5 * IQR) < x):
+        if x not in outliers_square:
+            outliers_square.append(x)
+for outlier in outliers_square:
+    df = df[df['square']!=outlier]
+
+print ('DATA', df.shape)
+
+# Identify Q1 và Q3
+df['communityAverage'].describe()
+# Drop outliers of "communityAverage"
+outliers_cA = []
+Q1 = 47402.000000
+Q3 = 72877.000000
+IQR = Q3 - Q1
+for x in df['communityAverage'].values:
+    if (x < (Q1 - 1.5 * IQR)) or ((Q3 + 1.5 * IQR) < x):
+        if x not in outliers_cA:
+            outliers_cA.append(x)
+for outlier in outliers_cA:
+    df = df[df['communityAverage']!=outlier]
+
+print ('DATA', df.shape)
+
+# Identify Q1 và Q3
+df['followers'].describe()
+# Drop outliers of "followers"
+outliers_followers = []
+Q1 = 0
+Q3 = 20.000000
+IQR = Q3 - Q1
+for x in df['followers'].values:
+    if (x < (Q1 - 1.5 * IQR)) or ((Q3 + 1.5 * IQR) < x):
+        if x not in outliers_followers:
+            outliers_followers.append(x)
+for outlier in  outliers_followers:
+    df = df[df['followers']!=outlier]
+
+print ('DATA', df.shape)
+
+# Identify Q1 và Q3
+df['tradeTime'].describe()
+# Drop outliers of "tradeTime"
+outliers_tradeTime = []
+Q1 = 2013
+Q3 = 2016
+IQR = Q3 - Q1
+for x in df['tradeTime'].values:
+    if (x < (Q1 - 1.5 * IQR)) or ((Q3 + 1.5 * IQR) < x):
+        if x not in outliers_tradeTime:
+            outliers_tradeTime.append(x)
+df = df[df['tradeTime'] != 2002]
+
+print ('DATA',df.shape)
+
+# Identify Q1 và Q3
+df['ladderRatio'].describe()
+# Drop outliers of "ladderRatio"
+outliers_ladderRatio = []
+Q1 = 0.250000
+Q3 = 0.500000
+IQR = Q3 - Q1
+for x in df['ladderRatio'].values:
+    if (x < (Q1 - 1.5 * IQR)) or ((Q3 + 1.5 * IQR) < x):
+        if x not in outliers_ladderRatio:
+            outliers_ladderRatio.append(x)
+for outlier in outliers_ladderRatio:
+    df = df[df['ladderRatio']!=outlier]
+
+print ('DATA', df.shape)
+
+# Reset and drop index column
+df.reset_index(inplace=True)
+df.drop(['index'], axis=1, inplace=True)
+
+# Distance Impact on the Price
+
+sb.set(rc={'figure.figsize':(12.7,8.27)})
+ax = sb.scatterplot(data=df, x="Lat", y="Lng", hue="price",
+                     legend='brief')
+ax.set(xlabel="Latitude", ylabel = "Longitude",title = "Price Distribution")
+
+# Age Distribution
+
+sb.set(rc={'figure.figsize':(12.7,8.27)})
+ax = sb.scatterplot(data=df, x="Lat", y="Lng", hue="Age",
+                      legend='brief')
+ax.set(xlabel="Latitude", ylabel = "Longitude",title = "Age Distribution")
+
+# Correlation between District and Price
+sb.set(rc={'figure.figsize':(12.7,8.27)})
+ax = sb.boxplot(data=df, x="district", y="price")
+ax.set(xlabel="Districts", ylabel = "Price",title = "Correlation between District and Price")
+
+# Correlation between Building Type and Price
+sb.set(rc={'figure.figsize':(12.7,8.27)})
+ax = sb.boxplot(data=df, x="buildingType", y="price")
+ax.set(xlabel="Building Type", ylabel = "Price",title = "Correlation between Building Type and Price")
+
+# Correlation between Building Type and Square
+sb.set(rc={'figure.figsize':(12.7,8.27)})
+ax = sb.boxplot(data=df, x="buildingType", y="square")
+ax.set(xlabel="Building Type", ylabel = "Square",title = "Correlation between Building Type and Square")
+
+# District wise Price
+sb.set(rc={'figure.figsize':(12.7,8.27)})
+ax = sb.scatterplot(data=df, x="Lat", y="Lng", hue="district")
+ax.set(xlabel="Latitude", ylabel = "Longitude",title = "District Location")
+
+# View of Correlation Matrix Through head map
+corr_matrix=df._get_numeric_data().corr()
+fig, ax = plt.subplots(figsize=(10,5))         # Sample figsize in inches
+sb.heatmap(corr_matrix, annot=False, linewidths=5, ax=ax, xticklabels=corr_matrix.columns.values,yticklabels=corr_matrix.columns.values, cmap="YlGnBu")
+sb.heatmap(corr, annot=True, fmt=".1f",linewidth=0.5 xticklabels=corr.columns.values,yticklabels=corr.columns.values)
+
+# Encode categorical features with One-Hot Encoding
+floorType_lst = pd.unique(df['floorType'])
+district_lst = pd.unique(df['district'])
+buildingType_lst = pd.unique(df['buildingType'])
+renovationCondition_lst = pd.unique(df['renovationCondition'])
+buildingStructure_lst = pd.unique(df['buildingStructure'])
+elevator_lst = pd.unique(df['elevator'])
+fiveYearsProperty_lst = pd.unique(df['fiveYearsProperty'])
+subway_lst = pd.unique(df['subway'])
+livingRoom_lst = pd.unique(df['livingRoom'])
+floorHeight_lst = pd.unique(df['floorHeight'])
+
+ohe = OneHotEncoder()
+
+# "floorType"
+X = ohe.fit_transform(df.floorType.values.reshape(-1,1)).toarray()
+dfOneHot = pd.DataFrame(X, columns = ["floorType_"+floorType_lst[i] for i in range(len(floorType_lst))]) 
+dfOneHot = dfOneHot.astype(int)
+df = pd.concat([df, dfOneHot], axis=1)
+df= df.drop(['floorType'], axis=1) 
+
+# "buildingType"
+X = ohe.fit_transform(df.buildingType.values.reshape(-1,1)).toarray()
+dfOneHot = pd.DataFrame(X, columns = ["buildingType_"+buildingType_lst[i] for i in range(len(buildingType_lst))]) 
+dfOneHot = dfOneHot.astype(int)
+df = pd.concat([df, dfOneHot], axis=1)
+df= df.drop(['buildingType'], axis=1) 
+
+# "district"
+X = ohe.fit_transform(df.district.values.reshape(-1,1)).toarray()
+dfOneHot = pd.DataFrame(X, columns = ["district_"+str(district_lst[i]) for i in range(len(district_lst))]) 
+dfOneHot = dfOneHot.astype(int)
+df = pd.concat([df, dfOneHot], axis=1)
+df= df.drop(['district'], axis=1) 
+
+# "renovationCondition"
+X = ohe.fit_transform(df.renovationCondition.values.reshape(-1,1)).toarray()
+dfOneHot = pd.DataFrame(X, columns = ["renovationCondition_"+str(renovationCondition_lst[i]) for i in range(len(renovationCondition_lst))]) 
+dfOneHot = dfOneHot.astype(int)
+df = pd.concat([df, dfOneHot], axis=1)
+df= df.drop(['renovationCondition'], axis=1) 
+
+# "buildingStructure"
+X = ohe.fit_transform(df.buildingStructure.values.reshape(-1,1)).toarray()
+dfOneHot = pd.DataFrame(X, columns = ["buildingStructure_"+str(buildingStructure_lst[i]) for i in range(len(buildingStructure_lst))]) 
+dfOneHot = dfOneHot.astype(int)
+df = pd.concat([df, dfOneHot], axis=1)
+df= df.drop(['buildingStructure'], axis=1) 
+
+# "elevator"
+X = ohe.fit_transform(df.elevator.values.reshape(-1,1)).toarray()
+dfOneHot = pd.DataFrame(X, columns = ["elevator_"+str(elevator_lst[i]) for i in range(len(elevator_lst))]) 
+dfOneHot = dfOneHot.astype(int)
+df = pd.concat([df, dfOneHot], axis=1)
+df= df.drop(['elevator'], axis=1) 
+
+# "fiveYearsProperty"
+X = ohe.fit_transform(df.fiveYearsProperty.values.reshape(-1,1)).toarray()
+dfOneHot = pd.DataFrame(X, columns = ["fiveYearsProperty_"+str(fiveYearsProperty_lst[i]) for i in range(len(fiveYearsProperty_lst))]) 
+dfOneHot = dfOneHot.astype(int)
+df = pd.concat([df, dfOneHot], axis=1)
+df= df.drop(['fiveYearsProperty'], axis=1) 
+
+# "subway"
+X = ohe.fit_transform(df.subway.values.reshape(-1,1)).toarray()
+dfOneHot = pd.DataFrame(X, columns = ["subway_"+str(subway_lst[i]) for i in range(len(subway_lst))]) 
+dfOneHot = dfOneHot.astype(int)
+df = pd.concat([df, dfOneHot], axis=1)
+df= df.drop(['subway'], axis=1) 
+
+# "livingRoom"
+X = ohe.fit_transform(df.livingRoom.values.reshape(-1,1)).toarray()
+dfOneHot = pd.DataFrame(X, columns = ["livingRoom_"+str(livingRoom_lst[i]) for i in range(len(livingRoom_lst))]) 
+dfOneHot = dfOneHot.astype(int)
+df = pd.concat([df, dfOneHot], axis=1)
+df= df.drop(['livingRoom'], axis=1) 
+
+# "floorHeight"
+X = ohe.fit_transform(df.floorHeight.values.reshape(-1,1)).toarray()
+dfOneHot = pd.DataFrame(X, columns = ["floorHeight_"+str(floorHeight_lst[i]) for i in range(len(floorHeight_lst))]) 
+dfOneHot = dfOneHot.astype(int)
+df = pd.concat([df, dfOneHot], axis=1)
+df= df.drop(['floorHeight'], axis=1) 
+
+# Normalize data
+X_category = df.drop(['Lng', 'Lat', 'tradeTime', 'followers', 'square', 'ladderRatio', 
+                'communityAverage', 'distance', 'Age'], axis=1, inplace=False)
+X_category = np.asarray(X_category)
+X_numeric = df[['Lng', 'Lat', 'tradeTime', 'followers', 'square', 'ladderRatio', 
+                'communityAverage', 'distance', 'Age']]
+X_numeric = np.asarray(X_numeric)
+X_numeric = preprocessing.StandardScaler().fit(X_numeric).transform(X_numeric)
+X = np.column_stack((X_category,X_numeric))
+y =  np.asarray(df['price'])#.reshape(-1, 1)
+
+# Split data into train and test test
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, random_state=0)
+
+# Split train set into small train and test set
+train_X,test_X,train_y,test_y = train_test_split(X_train,y_train, random_state=0)
+
+# Build Random Forest model for training data
+rf = RandomForestRegressor(random_state=42,n_estimators=900,max_depth=20,
+                                              n_jobs=-1,min_samples_split=10,) 
+rf.fit(train_X, train_y.ravel())
+pred_y = rf.predict(test_X)
+print ("RMSLE {:,.5f}".format(np.sqrt(mean_squared_log_error( pred_y, test_y))))
+
+# Build Random Forest for test data
+rf = RandomForestRegressor(random_state=42,n_estimators=900,max_depth=20,
+                                              n_jobs=-1,min_samples_split=10,)
+rf.fit(X_train, y_train.ravel())
+y_pred = rf.predict(X_test)
+print ("RMSLE {:,.5f}".format(np.sqrt(mean_squared_log_error( y_pred, y_test))))
+
+# Build LightGBM model for training data
+gbm = lgb.LGBMRegressor(objective='regression',num_leaves=36,learning_rate=0.15,
+                        n_estimators=64,min_child_weight = 2, colsample_bytree = 0.8,
+                        reg_lambda = 0.40)
+gbm.fit(train_X, train_y)
+pred_y = gbm.predict(test_X)
+print ("RMSLE {:,.5f}".format(np.sqrt(mean_squared_log_error( pred_y, test_y))))
+
+# Build LightGBM model for test data
+gbm = lgb.LGBMRegressor(objective='regression',num_leaves=36,learning_rate=0.15,
+                        n_estimators=64,min_child_weight = 2, colsample_bytree = 0.8,
+                        reg_lambda = 0.40)
+gbm.fit(X_train, y_train)
+y_pred = gbm.predict(X_test, num_iteration=gbm.best_iteration_)
+print ("RMSLE {:,.5f}".format(np.sqrt(mean_squared_log_error( y_pred, y_test))))
+
+# Build XGBoost for training data
+xg_reg = xgb.XGBRegressor(objective ='reg:squarederror', min_child_weight = 2, subsample = 1,
+                          colsample_bytree = 0.8,
+                          learning_rate = 0.2, n_estimators = 500,
+                         reg_lambda = 0.45, reg_alpha = 0, gamma = 0.5)
+xg_reg.fit(train_X,train_y)
+pred_y = xg_reg.predict(test_X)
+for i in range(len(pred_y)):
+  if pred_y[i] < 0:
+    pred_y[i] = 0
+print ("RMSLE {:,.5f}".format(np.sqrt(mean_squared_log_error( pred_y, test_y))))
+
+# Build XGBoost for test data
+xg_reg = xgb.XGBRegressor(objective ='reg:squarederror', min_child_weight = 2, subsample = 1,
+                          colsample_bytree = 0.8,
+                          learning_rate = 0.1, n_estimators = 200,
+                         reg_lambda = 0.45, reg_alpha = 0, gamma = 0.5)
+xg_reg.fit(X_train,y_train)
+y_pred = xg_reg.predict(X_test)
+for i in range(len(y_pred)):
+  if y_pred[i] < 0:
+    y_pred[i] = 0
+print ("RMSLE {:,.5f}".format(np.sqrt(mean_squared_log_error( y_pred, y_test))))
+
+# Build Hybrid Regession for training data
+r1 = xgb.XGBRegressor(objective ='reg:squarederror', min_child_weight = 2, subsample = 1,
+                          colsample_bytree = 0.8,
+                          learning_rate = 0.2, n_estimators = 500,
+                         reg_lambda = 0.45, reg_alpha = 0, gamma = 0.5)
+r2 = lgb.LGBMRegressor(objective='regression',num_leaves=36,learning_rate=0.15,
+                        n_estimators=64,min_child_weight = 2, colsample_bytree = 0.8,
+                        reg_lambda = 0.45)
+r3 = RandomForestRegressor(random_state=42,n_estimators=900,max_depth=20,
+                                              n_jobs=-1,min_samples_split=10,)
+hybrid = VotingRegressor([('gb', r1), ('lgb', r2), ('rf', r3)])
+hybrid.fit(train_X, train_y)
+pred_y = hybrid.predict(test_X)
+print ("RMSLE {:,.5f}".format(np.sqrt(mean_squared_log_error( pred_y, test_y))))
+
+# Build Hybrid Regression for test data
+r1 = xgb.XGBRegressor(objective ='reg:squarederror', min_child_weight = 2, subsample = 1,
+                          colsample_bytree = 0.8,
+                          learning_rate = 0.2, n_estimators = 500,
+                         reg_lambda = 0.45, reg_alpha = 0, gamma = 0.5)
+r2 = lgb.LGBMRegressor(objective='regression',num_leaves=36,learning_rate=0.15,
+                        n_estimators=64,min_child_weight = 2, colsample_bytree = 0.8,
+                        reg_lambda = 0.45)
+r3 = RandomForestRegressor(random_state=42,n_estimators=900,max_depth=20,
+                                              n_jobs=-1,min_samples_split=10,)
+hybrid = VotingRegressor([('gb', r1), ('lgb', r2), ('rf', r3)])
+hybrid.fit(X_train, y_train)
+y_pred = hybrid.predict(X_test)
+print ("RMSLE {:,.5f}".format(np.sqrt(mean_squared_log_error( y_pred, y_test))))
+
+# Build Stacked Generalization for training data
+r1 = xgb.XGBRegressor(objective ='reg:squarederror', min_child_weight = 2, subsample = 1,
+                          colsample_bytree = 0.8,
+                          learning_rate = 0.2, n_estimators = 500,
+                         reg_lambda = 0.45, reg_alpha = 0, gamma = 0.5)
+r2 = lgb.LGBMRegressor(objective='regression',num_leaves=36,learning_rate=0.15,
+                        n_estimators=64,min_child_weight = 2, colsample_bytree = 0.8,
+                        reg_lambda = 0.45)
+r3 = RandomForestRegressor(random_state=42,n_estimators=900,max_depth=20,
+                                              n_jobs=-1,min_samples_split=10,)
+estimators = [('rf', r3),('lgb', r2)]
+sreg = StackingRegressor(estimators=estimators,final_estimator = r1)
+sreg.fit(train_X, train_y)
+pred_y = sreg.predict(test_X)
+for i in range(len(pred_y)):
+  if pred_y[i] < 0:
+    pred_y[i] = 0
+print ("RMSLE {:,.5f}".format(np.sqrt(mean_squared_log_error( pred_y, test_y))))
+
+# Build Stacked Generalization for test data
+r1 = xgb.XGBRegressor(objective ='reg:squarederror', min_child_weight = 2, subsample = 1,
+                          colsample_bytree = 0.8,
+                          learning_rate = 0.2, n_estimators = 500,
+                         reg_lambda = 0.45, reg_alpha = 0, gamma = 0.5)
+r2 = lgb.LGBMRegressor(objective='regression',num_leaves=36,learning_rate=0.15,
+                        n_estimators=64,min_child_weight = 2, colsample_bytree = 0.8,
+                        reg_lambda = 0.45)
+r3 = RandomForestRegressor(random_state=42,n_estimators=900,max_depth=20,
+                                              n_jobs=-1,min_samples_split=10,)
+estimators = [('rf', r3),('lgb', r2)]
+sreg = StackingRegressor(estimators=estimators,final_estimator = r1)
+sreg.fit(X_train, y_train)
+y_pred = sreg.predict(X_test)
+for i in range(len(y_pred)):
+  if y_pred[i] < 0:
+    y_pred[i] = 0
+print ("RMSLE {:,.5f}".format(np.sqrt(mean_squared_log_error( y_pred, y_test))))
+
+# Build Bagging for training data
+br = BaggingRegressor(n_estimators=10, random_state=0)
+br.fit(train_X, train_y)
+y_pred = br.predict(test_X)
+print ("RMSLE {:,.5f}".format(np.sqrt(mean_squared_log_error( y_pred, test_y))))
+
+# Visual model prediction result
+sb.set(rc={'figure.figsize':(8,6)})
+fig1 = sb.regplot(y_pred,test_y,color = 'blue',line_kws={'color':'orange'})#,hue='y_test')
+fig1.set(xlabel="Bootstrap Aggregating Prediction", ylabel = "Actual Price")
+fig1.legend(['Line of Best Fit', 'Housing Price'], loc='lower right')
+
+# Save graph to drive
+fig1 = fig1.get_figure()
+fig1.savefig('/content/drive/MyDrive/Dataset/fig1.eps', format='eps')
+
+# Build Bagging for test data
+br = BaggingRegressor(n_estimators=10, random_state=0)
+br.fit(X_train, y_train)
+y_pred = br.predict(X_test)
+print ("RMSLE {:,.5f}".format(np.sqrt(mean_squared_log_error( y_pred, y_test))))
+
+# Visual prediction result
+sb.set(rc={'figure.figsize':(10,8)})
+sb.set_palette("crest")
+fig = sb.lineplot(list(range(50)), y_test[0:50], color="green", label="Original", linestyle="-")
+fig = sb.lineplot(list(range(50)), y_pred[0:50], color="yellow", label="Predict", linestyle="-")
+fig.set(xlabel="Observation", ylabel = "Housing Price")
+plt.legend()
+
+# Bagging with 10 loops
+sum = 0
+for i in range(10):
+  br = BaggingRegressor(n_estimators=10)
+  br.fit(X_train, y_train)
+  y_pred = br.predict(X_test)
+  rmsle = np.sqrt(mean_squared_log_error( y_pred, y_test))
+  sum = sum + rmsle
+  print('Loop',i,':')
+  print("- RMSLE {:,.5f}".format(np.sqrt(mean_squared_log_error( y_pred, y_test))))
+  i=i+1
+print("Average:",'{:,.5f}'.format(sum/10))
+
+# Build Extra-Trees for training data
+ext = ExtraTreesRegressor(random_state=0)
+ext.fit(train_X, train_y)
+y_pred = ext.predict(test_X)
+print ("RMSLE {:,.5f}".format(np.sqrt(mean_squared_log_error( y_pred, test_y))))
+
+# Visualize prediction result
+sb.set(rc={'figure.figsize':(8,6)})
+fig2 = sb.regplot(y_pred,test_y,color = 'blue',line_kws={'color':'orange'})#,hue='y_test')
+fig2.set(xlabel="Extremely Randomized Trees Prediction", ylabel = "Actual Price")
+fig2.legend(['Line of Best Fit', 'Housing Price'], loc='lower right')
+
+# Save graph to drive
+fig2 = fig2.get_figure()
+fig2.savefig('/content/drive/MyDrive/Dataset/fig2.eps', format='eps')
+
+# Build Extra-Trees for test data
+ext = ExtraTreesRegressor(random_state=0)
+ext.fit(X_train, y_train)
+y_pred = ext.predict(X_test)
+print ("RMSLE {:,.5f}".format(np.sqrt(mean_squared_log_error( y_pred, y_test))))
+
+# Extra-Trees with 10 loops
+sum = 0
+for i in range(10):
+  br = ExtraTreesRegressor(n_estimators=10)
+  br.fit(X_train, y_train)
+  y_pred = br.predict(X_test)
+  rmsle = np.sqrt(mean_squared_log_error( y_pred, y_test))
+  sum = sum + rmsle
+  print('Loop',i,':')
+  print("- RMSLE {:,.5f}".format(np.sqrt(mean_squared_log_error( y_pred, y_test))))
+  i=i+1
+print("Average:",'{:,.5f}'.format(sum/10))
+
+# Visualize original and predict values
+sb.set(rc={'figure.figsize':(10,8)})
+sb.set_palette("crest")
+fig = sb.lineplot(list(range(100)), y_test[0:100], color="green", label="Original", linestyle="-")
+fig = sb.lineplot(list(range(100)), y_pred[0:100], color="yellow", label="Predict", linestyle="-")
+fig.set(xlabel="Observation", ylabel = "Housing Price")
+
+# Build Super Learner for training data
+# Define models
+def get_models():
+  models = list()
+  models.append(BaggingRegressor(n_estimators=10, random_state=42))
+  models.append(ExtraTreesRegressor(n_estimators=10, random_state=42))
+  return models
+ 
+# Create out-of-fold predictions dataset
+def get_out_of_fold_predictions(X, y, models):
+	meta_X, meta_y = list(), list()
+	# define split of data
+	kfold = KFold(n_splits=10, shuffle=True)
+	# enumerate splits
+	for train_ix, test_ix in kfold.split(X):
+		fold_yhats = list()
+		# get data
+		train_X, test_X = X[train_ix], X[test_ix]
+		train_y, test_y = y[train_ix], y[test_ix]
+		meta_y.extend(test_y)
+		# fit and make predictions with each sub-model
+		for model in models:
+			model.fit(train_X, train_y)
+			yhat = model.predict(test_X)
+			# store columns
+			fold_yhats.append(yhat.reshape(len(yhat),1))
+		# store fold yhats as columns
+		meta_X.append(np.hstack(fold_yhats))
+	return np.vstack(meta_X), np.asarray(meta_y)
+ 
+# Fit base models
+def fit_base_models(X, y, models):
+	for model in models:
+		model.fit(X, y)
+ 
+# Fit meta-model
+def fit_meta_model(X, y):
+	model = LinearRegression()
+	model.fit(X, y)
+	return model
+ 
+# Evaluate base models
+def evaluate_models(X, y, models):
+	for model in models:
+		yhat = model.predict(X)
+		print (" -",model.__class__.__name__,":RMSLE {:,.5f}".format(np.sqrt(mean_squared_log_error(yhat, y))))
+ 
+# Predicting with meta-model
+def super_learner_predictions(X, models, meta_model):
+	meta_X = list()
+	for model in models:
+		yhat = model.predict(X)
+		meta_X.append(yhat.reshape(len(yhat),1))
+	meta_X = np.hstack(meta_X)
+	# predict
+	return meta_model.predict(meta_X)
+
+# Compile
+models = get_models()
+meta_X, meta_y = get_out_of_fold_predictions(train_X, train_y, models)
+fit_base_models(train_X, train_y, models)
+meta_model = fit_meta_model(meta_X, meta_y)
+evaluate_models(test_X, test_y, models)
+yhat = super_learner_predictions(test_X, models, meta_model)
+print(' - Super Learner: RMSLE %.5f' % (np.sqrt(mean_squared_log_error(yhat,test_y))))
+plt.legend()
+
+# Visualize prediction result
+sb.set(rc={'figure.figsize':(8,6)})
+fig4 = sb.regplot(yhat,test_y,color = 'blue',line_kws={'color':'orange'})#,hue='y_test')
+fig4.set(xlabel="Super Learner Prediction", ylabel = "Actual Price")
+fig4.legend(['Line of Best Fit', 'Housing Price'], loc='lower right')
+
+# Save image to drive
+fig4 = fig4.get_figure()
+fig4.savefig('/content/drive/MyDrive/Dataset/fig4.eps', format='eps')
+
+# Build Super Learner for test data
+# Define base models
+def get_models():
+  models = list()
+  models.append(BaggingRegressor(n_estimators=10, random_state=42))
+  models.append(ExtraTreesRegressor(n_estimators=10, random_state=42))
+  return models
+ 
+# Create out-of-fold predictions dataset 
+def get_out_of_fold_predictions(X, y, models):
+	meta_X, meta_y = list(), list()
+	# define split of data
+	kfold = KFold(n_splits=10, shuffle=True)
+	# enumerate splits
+	for train_ix, test_ix in kfold.split(X):
+		fold_yhats = list()
+		# get data
+		train_X, test_X = X[train_ix], X[test_ix]
+		train_y, test_y = y[train_ix], y[test_ix]
+		meta_y.extend(test_y)
+		# fit and make predictions with each sub-model
+		for model in models:
+			model.fit(train_X, train_y)
+			yhat = model.predict(test_X)
+			# store columns
+			fold_yhats.append(yhat.reshape(len(yhat),1))
+		# store fold yhats as columns
+		meta_X.append(np.hstack(fold_yhats))
+	return np.vstack(meta_X), np.asarray(meta_y)
+ 
+# Fit base models
+def fit_base_models(X, y, models):
+	for model in models:
+		model.fit(X, y)
+ 
+# Fit meta-model
+def fit_meta_model(X, y):
+	model = LinearRegression()
+	model.fit(X, y)
+	return model
+ 
+# Evaluate base models
+def evaluate_models(X, y, models):
+	for model in models:
+		yhat = model.predict(X)
+		print (" -",model.__class__.__name__,":RMSLE {:,.5f}".format(
+                                      np.sqrt(mean_squared_log_error(yhat, y))))
+ 
+# Predicting with meta-model
+def super_learner_predictions(X, models, meta_model):
+	meta_X = list()
+	for model in models:
+		yhat = model.predict(X)
+		meta_X.append(yhat.reshape(len(yhat),1))
+	meta_X = np.hstack(meta_X)
+	# predict
+	return meta_model.predict(meta_X)
+
+# Compile
+models = get_models()
+meta_X, meta_y = get_out_of_fold_predictions(X_train, y_train, models)
+fit_base_models(X_train, y_train, models)
+meta_model = fit_meta_model(meta_X, meta_y)
+evaluate_models(X_test, y_test, models)
+yhat = super_learner_predictions(X_test, models, meta_model)
+print(' - Super Learner: RMSLE %.5f' % (np.sqrt(mean_squared_log_error(yhat,y_test))))
+
+# Super Learner with 10 loops
+sum = 0
+for i in range(10):
+  # get models
+  models = get_models()
+  # get out of fold predictions
+  meta_X, meta_y = get_out_of_fold_predictions(X_train, y_train, models)
+  # print('Meta ', meta_X.shape, meta_y.shape)
+  # fit base models
+  fit_base_models(X_train, y_train, models)
+  # fit the meta model
+  meta_model = fit_meta_model(meta_X, meta_y)
+  print('Loop',i+1,':')
+  # evaluate base models
+  evaluate_models(X_test, y_test, models)
+  # evaluate meta model
+  yhat = super_learner_predictions(X_test, models, meta_model)
+  print(' - Super Learner: RMSLE %.5f' % (np.sqrt(mean_squared_log_error(yhat, y_test))))
+  rmsle = np.sqrt(mean_squared_log_error( yhat, y_test))
+  sum = sum + rmsle
+  i = i + 1
+print("Average:",'{:,.5f}'.format(sum/10))
